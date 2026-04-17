@@ -1,5 +1,52 @@
 import { useState, useReducer } from "react";
 
+/* ─── EMAIL CONFIG ───
+   To enable email notifications:
+   1. Go to emailjs.com and create a free account
+   2. Add an email service (Gmail, Outlook, etc.)
+   3. Create an email template with these variables:
+      {{request_type}}, {{title}}, {{requester}}, {{requester_email}},
+      {{priority}}, {{deadline}}, {{description}}, {{audience}},
+      {{subtype}}, {{delivery_format}}, {{notes}}
+   4. Replace the three values below with your actual IDs
+*/
+const EMAILJS_SERVICE_ID = "YOUR_SERVICE_ID";
+const EMAILJS_TEMPLATE_ID = "YOUR_TEMPLATE_ID";
+const EMAILJS_PUBLIC_KEY = "YOUR_PUBLIC_KEY";
+
+const sendEmailNotification = async (formData) => {
+  try {
+    const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service_id: EMAILJS_SERVICE_ID,
+        template_id: EMAILJS_TEMPLATE_ID,
+        user_id: EMAILJS_PUBLIC_KEY,
+        template_params: {
+          request_type: formData.type,
+          title: formData.title,
+          requester: formData.requester,
+          requester_email: formData.requesterEmail,
+          priority: formData.priority,
+          deadline: formData.deadline,
+          description: formData.description,
+          audience: formData.audience,
+          subtype: formData.subtype || "N/A",
+          delivery_format: formData.deliveryFormat || "N/A",
+          notes: formData.notes || "None",
+          hubspot_deal: formData.hubspotDealId || "Not linked",
+          hubspot_contact: formData.hubspotContactId || "Not linked",
+        },
+      }),
+    });
+    return response.ok;
+  } catch (err) {
+    console.error("Email failed:", err);
+    return false;
+  }
+};
+
 /* ─── PAID TRAINING SUBTYPES from playbook ─── */
 const PAID_TRAINING_SUBTYPES = [
   "Full System Onboarding",
@@ -22,7 +69,7 @@ const DELIVERY_FORMATS = [
   "Hands-On Walkthrough",
 ];
 
-const TYPES = ["Paid Training", "One Pager", "Video", "Webinar"];
+const TYPES = ["Paid Training", "One Pager", "Video", "Webinar", "Chat"];
 const STATUSES = ["Not Started", "In Progress", "In Review", "Complete"];
 const PRIORITIES = ["Low", "Medium", "High", "Urgent"];
 
@@ -31,6 +78,7 @@ const TYPE_CONFIG = {
   "One Pager": { icon: "📄", gradient: "linear-gradient(135deg, #0ABDE3, #0984E3)", color: "#0984E3" },
   Video: { icon: "🎬", gradient: "linear-gradient(135deg, #F368E0, #BE2EDD)", color: "#BE2EDD" },
   Webinar: { icon: "📡", gradient: "linear-gradient(135deg, #FF9F43, #EE5A24)", color: "#EE5A24" },
+  Chat: { icon: "💬", gradient: "linear-gradient(135deg, #00CEC9, #00B894)", color: "#00B894" },
 };
 
 const STATUS_STYLE = {
@@ -308,6 +356,7 @@ function RequestForm({ onSubmit }) {
   });
   const [errors, setErrors] = useState({});
   const [submitted, setSubmitted] = useState(false);
+  const [emailStatus, setEmailStatus] = useState(""); // "", "sending", "sent", "failed"
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -327,14 +376,22 @@ function RequestForm({ onSubmit }) {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return;
-    onSubmit({ ...form, id: Date.now(), date: new Date().toISOString().slice(0, 10), status: "Not Started" });
+    const requestData = { ...form, id: Date.now(), date: new Date().toISOString().slice(0, 10), status: "Not Started" };
+    onSubmit(requestData);
+
+    // Send email notification
+    setEmailStatus("sending");
+    const emailSent = await sendEmailNotification(requestData);
+    setEmailStatus(emailSent ? "sent" : "failed");
+
     setSubmitted(true);
     setTimeout(() => {
       setSubmitted(false);
+      setEmailStatus("");
       setForm({ type: "", subtype: "", title: "", requester: "", requesterEmail: "", deadline: "", priority: "", deliveryFormat: "", description: "", audience: "", notes: "", hubspotDealId: "", hubspotContactId: "" });
-    }, 2000);
+    }, 3000);
   };
 
   const inputStyle = (name) => ({
@@ -356,7 +413,12 @@ function RequestForm({ onSubmit }) {
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 800, color: "#1a1a2e", marginBottom: 8 }}>
           Request Submitted!
         </h2>
-        <p style={{ color: "#8E8EA0", fontFamily: "var(--font-body)" }}>Redirecting to dashboard…</p>
+        <p style={{ color: "#8E8EA0", fontFamily: "var(--font-body)", marginBottom: 8 }}>Redirecting to dashboard…</p>
+        <p style={{ fontSize: 12, fontFamily: "var(--font-body)", color: emailStatus === "sent" ? "#2E7D32" : emailStatus === "failed" ? "#FF5252" : "#8E8EA0" }}>
+          {emailStatus === "sending" && "📧 Sending email notification…"}
+          {emailStatus === "sent" && "✅ Email notification sent!"}
+          {emailStatus === "failed" && "⚠️ Email not configured yet — request still saved!"}
+        </p>
       </div>
     );
   }
@@ -375,13 +437,13 @@ function RequestForm({ onSubmit }) {
           </h2>
         </div>
         <p style={{ fontSize: 13, color: "#8E8EA0", marginBottom: 28, fontFamily: "var(--font-body)", lineHeight: 1.6 }}>
-          Need a training, one pager, video, or webinar? Fill out every detail below so I can deliver exactly what you need.
+          Need a training, one pager, video, webinar, or just want to chat through an idea? Fill out every detail below so I can deliver exactly what you need.
         </p>
 
         {/* Type selection as cards */}
         <div style={{ marginBottom: 20 }}>
           <label style={labelStyle}>What do you need? *</label>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
             {TYPES.map(t => {
               const cfg = TYPE_CONFIG[t];
               const active = form.type === t;
@@ -432,6 +494,23 @@ function RequestForm({ onSubmit }) {
                 </select>
                 {errors.deliveryFormat && <div style={{ color: "#FF5252", fontSize: 12, marginTop: 4 }}>{errors.deliveryFormat}</div>}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Chat specific hint */}
+        {form.type === "Chat" && (
+          <div style={{
+            background: "linear-gradient(135deg, #E8FFF8 0%, #F0FFFC 100%)",
+            borderRadius: 14, padding: "18px 18px", marginBottom: 20,
+            border: "1px dashed #7DCEA0",
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#00B894", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              💬 Chat / Feedback Session
+            </div>
+            <div style={{ fontSize: 13, color: "#555", fontFamily: "var(--font-body)", lineHeight: 1.6 }}>
+              Use this when you want to bounce ideas off me, get feedback on a project, or talk through something before it becomes a formal request.
+              In the description below, tell me what you want to discuss and any context that will help me prepare.
             </div>
           </div>
         )}
