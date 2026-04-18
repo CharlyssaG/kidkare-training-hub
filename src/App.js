@@ -1,4 +1,94 @@
-import { useState, useReducer } from "react";
+import { useState, useReducer, useEffect, useCallback } from "react";
+
+/* ─── SUPABASE CONFIG ───
+   Replace these with your actual values from Supabase > Settings > API
+*/
+const SUPABASE_URL = "https://supabase.com/dashboard/project/qgcvummntlhgkiyjrzri";
+const SUPABASE_ANON_KEY = "sb_publishable_r7saQs-eOb9PTMxUF2wPEQ_GijArEEb";
+
+/* Simple Supabase client using fetch */
+const supabase = {
+  from: (table) => ({
+    select: async () => {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*&order=created_at.desc`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      });
+      if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+      return res.json();
+    },
+    insert: async (row) => {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json", Prefer: "return=representation",
+        },
+        body: JSON.stringify(row),
+      });
+      if (!res.ok) throw new Error(`Insert failed: ${res.status}`);
+      return res.json();
+    },
+    update: async (id, updates) => {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json", Prefer: "return=representation",
+        },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+      return res.json();
+    },
+    delete: async (id) => {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+        method: "DELETE",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      });
+      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+      return true;
+    },
+  }),
+};
+
+/* Helper to convert database row (snake_case) to app format (camelCase) */
+const fromDB = (row) => ({
+  id: row.id,
+  type: row.type,
+  subtype: row.subtype || "",
+  title: row.title,
+  requester: row.requester,
+  requesterEmail: row.requester_email || "",
+  date: row.date,
+  deadline: row.deadline,
+  status: row.status,
+  priority: row.priority,
+  deliveryFormat: row.delivery_format || "",
+  description: row.description,
+  audience: row.audience,
+  notes: row.notes || "",
+  hubspotDealId: row.hubspot_deal_id || "",
+  hubspotContactId: row.hubspot_contact_id || "",
+});
+
+/* Helper to convert app format to database format */
+const toDB = (data) => ({
+  type: data.type,
+  subtype: data.subtype || "",
+  title: data.title,
+  requester: data.requester,
+  requester_email: data.requesterEmail || "",
+  date: data.date,
+  deadline: data.deadline,
+  status: data.status,
+  priority: data.priority,
+  delivery_format: data.deliveryFormat || "",
+  description: data.description,
+  audience: data.audience,
+  notes: data.notes || "",
+  hubspot_deal_id: data.hubspotDealId || "",
+  hubspot_contact_id: data.hubspotContactId || "",
+});
 
 /* ─── EMAIL CONFIG ───
    To enable email notifications:
@@ -90,64 +180,13 @@ const STATUS_STYLE = {
 
 const PRIORITY_COLORS = { Low: "#78909C", Medium: "#FFB300", High: "#FF5252", Urgent: "#D50000" };
 
-const INITIAL_REQUESTS = [
-  {
-    id: 1, type: "Paid Training", subtype: "Full System Onboarding", title: "New Center Onboarding – Little Stars Academy",
-    requester: "Jamie R.", requesterEmail: "jamie.r@kidkare.com", date: "2026-04-10", deadline: "2026-05-01",
-    status: "In Progress", priority: "High", deliveryFormat: "1:1 Session",
-    description: "Full system onboarding for a new independent center. Cover account setup, child enrollment (they have 45 kids to import via CSV), menu planning, attendance tracking, and first claim submission. They've never used CACFP software before.",
-    audience: "Center director + 2 staff members", notes: "Contact prefers morning sessions. Has CSV ready for import.", hubspotDealId: "", hubspotContactId: ""
-  },
-  {
-    id: 2, type: "One Pager", subtype: "", title: "60-Day Receipt Rule Quick Guide",
-    requester: "Morgan T.", requesterEmail: "morgan.t@kidkare.com", date: "2026-04-08", deadline: "2026-04-18",
-    status: "Not Started", priority: "Medium", deliveryFormat: "",
-    description: "A one-page visual guide explaining the 60-day receipt rule for providers. Should include examples of compliant vs non-compliant scenarios and a timeline graphic.",
-    audience: "CACFP Providers", notes: "Morgan wants Canva-designed, brand colors", hubspotDealId: "", hubspotContactId: ""
-  },
-  {
-    id: 3, type: "Video", subtype: "", title: "How to Submit Your First Claim",
-    requester: "Alex P.", requesterEmail: "alex.p@kidkare.com", date: "2026-04-05", deadline: "2026-04-25",
-    status: "In Progress", priority: "High", deliveryFormat: "Recorded Session",
-    description: "Step-by-step screen recording walking providers through their first claim submission in KidKare. Cover meal entry, attendance verification, error checking, and final submission.",
-    audience: "New independent center users", notes: "Script drafted, recording scheduled for 4/16", hubspotDealId: "", hubspotContactId: ""
-  },
-  {
-    id: 4, type: "Webinar", subtype: "", title: "Menu Monday Deep Dive: Spring Menus",
-    requester: "Self", requesterEmail: "", date: "2026-04-01", deadline: "2026-04-14",
-    status: "Complete", priority: "Low", deliveryFormat: "Group Training",
-    description: "Live webinar covering seasonal spring menu planning that meets CACFP meal pattern requirements. Include vegetable/fruit variety tips and creditable food combos.",
-    audience: "Facebook community + registered attendees", notes: "Certificate form sent, 47 attendees", hubspotDealId: "", hubspotContactId: ""
-  },
-  {
-    id: 5, type: "Paid Training", subtype: "Claiming & Error Resolution", title: "Error Resolution Workshop – Sunshine Sponsors",
-    requester: "Dana K.", requesterEmail: "dana.k@kidkare.com", date: "2026-03-28", deadline: "2026-04-20",
-    status: "In Progress", priority: "High", deliveryFormat: "Group Training",
-    description: "Group training for sponsor staff who keep hitting Error 60 and Error 91 during claim submission. Cover how KidKare calculates claims, fixing errors, recalculating, and which reports to run for validation.",
-    audience: "Sponsor claims staff (6 people)", notes: "They had 3 months of disallowances", hubspotDealId: "", hubspotContactId: ""
-  },
-  {
-    id: 6, type: "Paid Training", subtype: "Parachute (Accounting & Receipts)", title: "Parachute Setup & Receipt Training",
-    requester: "Chris L.", requesterEmail: "chris.l@kidkare.com", date: "2026-04-12", deadline: "2026-04-28",
-    status: "Not Started", priority: "Medium", deliveryFormat: "Hands-On Walkthrough",
-    description: "Hands-on walkthrough of Parachute for a center that just started using receipt capture. Cover daily vs weekly receipt strategies, the 60-day rule, and audit prep basics.",
-    audience: "Center bookkeeper + director", notes: "", hubspotDealId: "", hubspotContactId: ""
-  },
-  {
-    id: 7, type: "Paid Training", subtype: "Sponsor-Level Management", title: "Multi-Site Oversight Training",
-    requester: "Sam W.", requesterEmail: "sam.w@kidkare.com", date: "2026-04-11", deadline: "2026-05-05",
-    status: "Not Started", priority: "Medium", deliveryFormat: "1:1 Session",
-    description: "Sponsor managing 14 centers needs training on bulk actions, oversight tools, backdating policies, permissions management, and monitoring compliance across all sites.",
-    audience: "Sponsor administrator", notes: "Prefers afternoon sessions, has used KidKare for 2 years but never used bulk tools", hubspotDealId: "", hubspotContactId: ""
-  },
-];
-
 function reducer(state, action) {
   switch (action.type) {
     case "SET_TAB": return { ...state, activeTab: action.payload };
     case "SET_FILTER_TYPE": return { ...state, filterType: action.payload };
     case "SET_FILTER_STATUS": return { ...state, filterStatus: action.payload };
     case "SET_SORT": return { ...state, sortBy: action.payload };
+    case "SET_REQUESTS": return { ...state, requests: action.payload };
     case "ADD_REQUEST": return { ...state, requests: [action.payload, ...state.requests], activeTab: "dashboard" };
     case "UPDATE_STATUS": return { ...state, requests: state.requests.map(r => r.id === action.payload.id ? { ...r, status: action.payload.status } : r) };
     case "DELETE_REQUEST": return { ...state, requests: state.requests.filter(r => r.id !== action.payload) };
@@ -239,7 +278,7 @@ function PriorityDot({ priority }) {
 function RequestCard({ request, onStatusChange, onDelete, expanded, onExpand }) {
   const daysLeft = Math.ceil((new Date(request.deadline) - new Date()) / 86400000);
   const overdue = daysLeft < 0 && request.status !== "Complete";
-  const cfg = TYPE_CONFIG[request.type];
+  const cfg = TYPE_CONFIG[request.type] || TYPE_CONFIG["Chat"];
 
   return (
     <GlowCard style={{
@@ -297,7 +336,6 @@ function RequestCard({ request, onStatusChange, onDelete, expanded, onExpand }) 
             {request.requesterEmail && <DetailBlock label="Requester Email" value={request.requesterEmail} />}
           </div>
 
-          {/* HubSpot IDs */}
           <div style={{
             background: "#FFF8E1", borderRadius: 10, padding: "10px 14px", marginBottom: 16,
             display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#F57F17",
@@ -356,7 +394,7 @@ function RequestForm({ onSubmit }) {
   });
   const [errors, setErrors] = useState({});
   const [submitted, setSubmitted] = useState(false);
-  const [emailStatus, setEmailStatus] = useState(""); // "", "sending", "sent", "failed"
+  const [emailStatus, setEmailStatus] = useState("");
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -378,10 +416,9 @@ function RequestForm({ onSubmit }) {
 
   const handleSubmit = async () => {
     if (!validate()) return;
-    const requestData = { ...form, id: Date.now(), date: new Date().toISOString().slice(0, 10), status: "Not Started" };
-    onSubmit(requestData);
+    const requestData = { ...form, date: new Date().toISOString().slice(0, 10), status: "Not Started" };
+    await onSubmit(requestData);
 
-    // Send email notification
     setEmailStatus("sending");
     const emailSent = await sendEmailNotification(requestData);
     setEmailStatus(emailSent ? "sent" : "failed");
@@ -627,11 +664,65 @@ function RequestForm({ onSubmit }) {
 /* ─── MAIN DASHBOARD ─── */
 export default function KidKareDashboard() {
   const [state, dispatch] = useReducer(reducer, {
-    requests: INITIAL_REQUESTS, activeTab: "dashboard",
+    requests: [], activeTab: "dashboard",
     filterType: "All", filterStatus: "All", sortBy: "deadline",
   });
   const [expandedId, setExpandedId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const { requests, activeTab, filterType, filterStatus, sortBy } = state;
+
+  /* Load requests from Supabase on mount */
+  const loadRequests = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await supabase.from("requests").select();
+      dispatch({ type: "SET_REQUESTS", payload: data.map(fromDB) });
+      setError(null);
+    } catch (err) {
+      console.error("Failed to load:", err);
+      setError("Failed to load requests. Check your Supabase config.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadRequests(); }, [loadRequests]);
+
+  /* Database-connected actions */
+  const handleAddRequest = async (formData) => {
+    try {
+      const rows = await supabase.from("requests").insert(toDB(formData));
+      if (rows && rows.length > 0) {
+        dispatch({ type: "ADD_REQUEST", payload: fromDB(rows[0]) });
+      } else {
+        await loadRequests();
+      }
+    } catch (err) {
+      console.error("Failed to add:", err);
+      await loadRequests();
+    }
+  };
+
+  const handleStatusChange = async (id, status) => {
+    dispatch({ type: "UPDATE_STATUS", payload: { id, status } });
+    try {
+      await supabase.from("requests").update(id, { status });
+    } catch (err) {
+      console.error("Failed to update:", err);
+      await loadRequests();
+    }
+  };
+
+  const handleDelete = async (id) => {
+    dispatch({ type: "DELETE_REQUEST", payload: id });
+    try {
+      await supabase.from("requests").delete(id);
+    } catch (err) {
+      console.error("Failed to delete:", err);
+      await loadRequests();
+    }
+  };
 
   const filtered = requests
     .filter(r => filterType === "All" ? true : r.type === filterType)
@@ -660,6 +751,7 @@ export default function KidKareDashboard() {
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
       <style>{`
         @keyframes shimmer { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+        @keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
         * { box-sizing: border-box; }
         select:focus, input:focus, textarea:focus { border-color: #F368E0 !important; box-shadow: 0 0 0 3px #F368E044 !important; outline: none; }
         button:active { transform: scale(0.97) !important; }
@@ -687,11 +779,6 @@ export default function KidKareDashboard() {
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 18, color: "#1a1a2e" }}>
                 KidKare Training Hub
               </span>
-              <span style={{
-                fontSize: 10, fontWeight: 700, color: "#F368E0",
-                background: "#FDF0FF", padding: "2px 8px", borderRadius: 6,
-                marginLeft: 10, verticalAlign: "middle",
-              }}>BETA</span>
             </div>
           </div>
 
@@ -716,7 +803,35 @@ export default function KidKareDashboard() {
 
       {/* ── CONTENT ── */}
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "28px 24px 60px" }}>
-        {activeTab === "dashboard" && (
+
+        {/* Loading state */}
+        {loading && activeTab === "dashboard" && (
+          <div style={{ textAlign: "center", padding: "80px 24px" }}>
+            <div style={{ fontSize: 48, marginBottom: 16, animation: "pulse 1.5s infinite" }}>📊</div>
+            <p style={{ color: "#8E8EA0", fontFamily: "var(--font-body)", fontSize: 15 }}>Loading your requests…</p>
+          </div>
+        )}
+
+        {/* Error state */}
+        {error && activeTab === "dashboard" && (
+          <div style={{
+            textAlign: "center", padding: "60px 24px", background: "#FFF5F5",
+            borderRadius: 18, border: "1px solid #FFCDD2", marginBottom: 24,
+          }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+            <p style={{ color: "#D50000", fontFamily: "var(--font-body)", fontSize: 15, fontWeight: 700, marginBottom: 8 }}>{error}</p>
+            <p style={{ color: "#8E8EA0", fontFamily: "var(--font-body)", fontSize: 13 }}>
+              Check that your SUPABASE_URL and SUPABASE_ANON_KEY are correct in App.js
+            </p>
+            <button onClick={loadRequests} style={{
+              marginTop: 16, padding: "10px 24px", borderRadius: 10, border: "none",
+              background: "linear-gradient(135deg, #FF6B6B, #F368E0)", color: "#fff",
+              fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-body)",
+            }}>Try Again</button>
+          </div>
+        )}
+
+        {activeTab === "dashboard" && !loading && !error && (
           <>
             {/* Stats Row */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
@@ -742,7 +857,6 @@ export default function KidKareDashboard() {
               ))}
               <div style={{ flex: 1 }} />
 
-              {/* Status + Sort */}
               <select value={filterStatus} onChange={e => dispatch({ type: "SET_FILTER_STATUS", payload: e.target.value })} style={{
                 padding: "8px 14px", borderRadius: 10, border: "1.5px solid #E8E8F0",
                 fontSize: 12, fontFamily: "var(--font-body)", color: "#666",
@@ -767,22 +881,22 @@ export default function KidKareDashboard() {
               {filtered.length === 0 && (
                 <div style={{ textAlign: "center", padding: "60px 24px", color: "#BFBFC8", fontSize: 15, fontFamily: "var(--font-body)" }}>
                   <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
-                  No requests match your filters.
+                  {requests.length === 0 ? "No requests yet — submit your first one!" : "No requests match your filters."}
                 </div>
               )}
               {filtered.map(r => (
                 <RequestCard key={r.id} request={r}
                   expanded={expandedId === r.id}
                   onExpand={() => setExpandedId(expandedId === r.id ? null : r.id)}
-                  onStatusChange={(id, status) => dispatch({ type: "UPDATE_STATUS", payload: { id, status } })}
-                  onDelete={id => dispatch({ type: "DELETE_REQUEST", payload: id })} />
+                  onStatusChange={handleStatusChange}
+                  onDelete={handleDelete} />
               ))}
             </div>
           </>
         )}
 
         {activeTab === "submit" && (
-          <RequestForm onSubmit={data => dispatch({ type: "ADD_REQUEST", payload: data })} />
+          <RequestForm onSubmit={handleAddRequest} />
         )}
       </div>
     </div>
