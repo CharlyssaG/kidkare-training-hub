@@ -3,7 +3,7 @@ import { useState, useReducer, useEffect, useCallback } from "react";
 /* ─── SUPABASE CONFIG ───
    Replace these with your actual values from Supabase > Settings > API
 */
-const SUPABASE_URL = "https://supabase.com/dashboard/project/qgcvummntlhgkiyjrzri";
+const SUPABASE_URL = "https://qgcvummntlhgkiyjrzri.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_r7saQs-eOb9PTMxUF2wPEQ_GijArEEb";
 
 /* Simple Supabase client using fetch */
