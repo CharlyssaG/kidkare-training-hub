@@ -674,7 +674,7 @@ export default function KidKareDashboard() {
   const [showPinInput, setShowPinInput] = useState(false);
   const [pinValue, setPinValue] = useState("");
   const [pinError, setPinError] = useState(false);
-  const ADMIN_PIN = "1234"; // ← CHANGE THIS to your own secret PIN!
+  const ADMIN_PIN = "5460"; // ← CHANGE THIS to your own secret PIN!
   const { requests, activeTab, filterType, filterStatus, sortBy } = state;
 
   /* Load requests from Supabase on mount */
