@@ -664,12 +664,17 @@ function RequestForm({ onSubmit }) {
 /* ─── MAIN DASHBOARD ─── */
 export default function KidKareDashboard() {
   const [state, dispatch] = useReducer(reducer, {
-    requests: [], activeTab: "dashboard",
+    requests: [], activeTab: "submit",
     filterType: "All", filterStatus: "All", sortBy: "deadline",
   });
   const [expandedId, setExpandedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [showPinInput, setShowPinInput] = useState(false);
+  const [pinValue, setPinValue] = useState("");
+  const [pinError, setPinError] = useState(false);
+  const ADMIN_PIN = "1234"; // ← CHANGE THIS to your own secret PIN!
   const { requests, activeTab, filterType, filterStatus, sortBy } = state;
 
   /* Load requests from Supabase on mount */
@@ -782,21 +787,92 @@ export default function KidKareDashboard() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 4, background: "#F4F4F8", borderRadius: 12, padding: 4 }}>
-            {[
-              { key: "dashboard", label: "📊 Dashboard" },
-              { key: "submit", label: "✨ Submit Request" },
-            ].map(tab => (
-              <button key={tab.key} onClick={() => dispatch({ type: "SET_TAB", payload: tab.key })} style={{
+          <div style={{ display: "flex", gap: 4, background: "#F4F4F8", borderRadius: 12, padding: 4, alignItems: "center" }}>
+            <button onClick={() => dispatch({ type: "SET_TAB", payload: "submit" })} style={{
+              padding: "8px 20px", borderRadius: 10, border: "none",
+              background: activeTab === "submit" ? "#fff" : "transparent",
+              color: activeTab === "submit" ? "#1a1a2e" : "#8E8EA0",
+              fontSize: 13, fontWeight: activeTab === "submit" ? 800 : 600,
+              cursor: "pointer", fontFamily: "var(--font-body)",
+              boxShadow: activeTab === "submit" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+              transition: "all 0.2s",
+            }}>✨ Submit Request</button>
+
+            {adminUnlocked ? (
+              <button onClick={() => dispatch({ type: "SET_TAB", payload: "dashboard" })} style={{
                 padding: "8px 20px", borderRadius: 10, border: "none",
-                background: activeTab === tab.key ? "#fff" : "transparent",
-                color: activeTab === tab.key ? "#1a1a2e" : "#8E8EA0",
-                fontSize: 13, fontWeight: activeTab === tab.key ? 800 : 600,
+                background: activeTab === "dashboard" ? "#fff" : "transparent",
+                color: activeTab === "dashboard" ? "#1a1a2e" : "#8E8EA0",
+                fontSize: 13, fontWeight: activeTab === "dashboard" ? 800 : 600,
                 cursor: "pointer", fontFamily: "var(--font-body)",
-                boxShadow: activeTab === tab.key ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+                boxShadow: activeTab === "dashboard" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
                 transition: "all 0.2s",
-              }}>{tab.label}</button>
-            ))}
+              }}>📊 Dashboard</button>
+            ) : (
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setShowPinInput(!showPinInput)} style={{
+                  padding: "8px 20px", borderRadius: 10, border: "none",
+                  background: "transparent", color: "#C0C0CC",
+                  fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-body)",
+                }}>🔒 Admin</button>
+                {showPinInput && (
+                  <div style={{
+                    position: "absolute", top: "calc(100% + 8px)", right: 0,
+                    background: "#fff", borderRadius: 14, padding: "16px 18px",
+                    boxShadow: "0 8px 30px rgba(0,0,0,0.15)", border: "1px solid #E8E8F0",
+                    zIndex: 200, minWidth: 220,
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#1a1a2e", marginBottom: 8, fontFamily: "var(--font-body)" }}>
+                      Enter admin PIN
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        type="password"
+                        value={pinValue}
+                        onChange={e => { setPinValue(e.target.value); setPinError(false); }}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") {
+                            if (pinValue === ADMIN_PIN) {
+                              setAdminUnlocked(true);
+                              setShowPinInput(false);
+                              setPinValue("");
+                              dispatch({ type: "SET_TAB", payload: "dashboard" });
+                            } else {
+                              setPinError(true);
+                              setPinValue("");
+                            }
+                          }
+                        }}
+                        placeholder="PIN"
+                        autoFocus
+                        style={{
+                          flex: 1, padding: "8px 12px", borderRadius: 8,
+                          border: pinError ? "2px solid #FF5252" : "1.5px solid #E8E8F0",
+                          fontSize: 14, fontFamily: "var(--font-body)", outline: "none",
+                          textAlign: "center", letterSpacing: "0.2em",
+                        }}
+                      />
+                      <button onClick={() => {
+                        if (pinValue === ADMIN_PIN) {
+                          setAdminUnlocked(true);
+                          setShowPinInput(false);
+                          setPinValue("");
+                          dispatch({ type: "SET_TAB", payload: "dashboard" });
+                        } else {
+                          setPinError(true);
+                          setPinValue("");
+                        }
+                      }} style={{
+                        padding: "8px 14px", borderRadius: 8, border: "none",
+                        background: "linear-gradient(135deg, #FF6B6B, #F368E0)",
+                        color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      }}>Go</button>
+                    </div>
+                    {pinError && <div style={{ color: "#FF5252", fontSize: 11, marginTop: 6, fontFamily: "var(--font-body)" }}>Wrong PIN, try again</div>}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
